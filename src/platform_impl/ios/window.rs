@@ -80,22 +80,31 @@ impl WinitUIWindow {
         frame: CGRect,
         view_controller: &UIViewController,
     ) -> Retained<Self> {
-        let this: Retained<Self> = unsafe { msg_send_id![mtm.alloc(), initWithFrame: frame] };
+        let window_scene = app_state::current_window_scene(mtm);
+        let this: Retained<Self> = match window_scene.as_deref() {
+            Some(window_scene) => unsafe {
+                msg_send_id![mtm.alloc(), initWithWindowScene: window_scene]
+            },
+            None => unsafe { msg_send_id![mtm.alloc(), initWithFrame: frame] },
+        };
 
+        this.setFrame(frame);
         this.setRootViewController(Some(view_controller));
 
-        match window_attributes.fullscreen.clone().map(Into::into) {
-            Some(Fullscreen::Exclusive(ref video_mode)) => {
-                let monitor = video_mode.monitor();
-                let screen = monitor.ui_screen(mtm);
-                screen.setCurrentMode(Some(video_mode.screen_mode(mtm)));
-                this.setScreen(screen);
-            },
-            Some(Fullscreen::Borderless(Some(ref monitor))) => {
-                let screen = monitor.ui_screen(mtm);
-                this.setScreen(screen);
-            },
-            _ => (),
+        if window_scene.is_none() {
+            match window_attributes.fullscreen.clone().map(Into::into) {
+                Some(Fullscreen::Exclusive(ref video_mode)) => {
+                    let monitor = video_mode.monitor();
+                    let screen = monitor.ui_screen(mtm);
+                    screen.setCurrentMode(Some(video_mode.screen_mode(mtm)));
+                    this.setScreen(screen);
+                },
+                Some(Fullscreen::Borderless(Some(ref monitor))) => {
+                    let screen = monitor.ui_screen(mtm);
+                    this.setScreen(screen);
+                },
+                _ => (),
+            }
         }
 
         this
@@ -499,14 +508,25 @@ impl Window {
 
         #[allow(deprecated)]
         let main_screen = UIScreen::mainScreen(mtm);
+        let window_scene = app_state::current_window_scene(mtm);
+        let scene_screen =
+            window_scene.as_deref().map(|window_scene| unsafe { window_scene.screen() });
         let fullscreen = window_attributes.fullscreen.clone().map(Into::into);
-        let screen = match fullscreen {
+        let screen = match &fullscreen {
             Some(Fullscreen::Exclusive(ref video_mode)) => video_mode.monitor.ui_screen(mtm),
             Some(Fullscreen::Borderless(Some(ref monitor))) => monitor.ui_screen(mtm),
-            Some(Fullscreen::Borderless(None)) | None => &main_screen,
+            Some(Fullscreen::Borderless(None)) | None => {
+                scene_screen.as_ref().unwrap_or(&main_screen)
+            },
         };
 
-        let screen_bounds = screen.bounds();
+        let use_scene_bounds = matches!(fullscreen, Some(Fullscreen::Borderless(None)) | None)
+            && window_scene.is_some();
+        let screen_bounds = if use_scene_bounds {
+            unsafe { window_scene.as_deref().unwrap().coordinateSpace().bounds() }
+        } else {
+            screen.bounds()
+        };
         let screen_max_frames_per_second = screen.maximumFramesPerSecond();
 
         let frame = match window_attributes.inner_size {

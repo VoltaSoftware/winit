@@ -210,12 +210,17 @@ features = [
     "UIRotationGestureRecognizer",
     "UIScreen",
     "UIScreenMode",
+    "UIScene",
+    "UISceneDefinitions",
+    "UISceneOptions",
+    "UISceneSession",
     "UITapGestureRecognizer",
     "UITouch",
     "UITraitCollection",
     "UIView",
     "UIViewController",
     "UIWindow",
+    "UIWindowScene",
 ]
 
 [target.'cfg(target_os = "windows")'.dependencies]

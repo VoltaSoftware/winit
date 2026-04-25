@@ -15,12 +15,12 @@ use core_foundation::runloop::{
 };
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2::{msg_send, sel};
+use objc2::{msg_send, sel, ClassType};
 use objc2_foundation::{
     CGRect, CGSize, MainThreadMarker, NSInteger, NSObjectProtocol, NSOperatingSystemVersion,
     NSProcessInfo,
 };
-use objc2_ui_kit::{UIApplication, UICoordinateSpace, UIView, UIWindow};
+use objc2_ui_kit::{UIApplication, UICoordinateSpace, UIView, UIWindow, UIWindowScene};
 
 use super::window::WinitUIWindow;
 use crate::dpi::PhysicalSize;
@@ -138,6 +138,7 @@ pub(crate) struct AppState {
     app_state: Option<AppStateImpl>,
     control_flow: ControlFlow,
     waker: EventLoopWaker,
+    window_scene: Option<Retained<UIWindowScene>>,
 }
 
 impl AppState {
@@ -163,6 +164,7 @@ impl AppState {
                     }),
                     control_flow: ControlFlow::default(),
                     waker,
+                    window_scene: None,
                 });
             }
             init_guard(&mut guard);
@@ -423,17 +425,68 @@ pub(crate) fn set_key_window(mtm: MainThreadMarker, window: &Retained<WinitUIWin
         &mut AppStateImpl::NotLaunched { ref mut queued_windows, .. } => {
             return queued_windows.push(window.clone())
         },
+        &mut AppStateImpl::Launching { ref mut queued_windows, .. } => {
+            return queued_windows.push(window.clone())
+        },
         &mut AppStateImpl::ProcessingEvents { .. }
         | &mut AppStateImpl::InUserCallback { .. }
         | &mut AppStateImpl::ProcessingRedraws { .. } => {},
-        s @ &mut AppStateImpl::Launching { .. }
-        | s @ &mut AppStateImpl::Waiting { .. }
-        | s @ &mut AppStateImpl::PollFinished { .. } => bug!("unexpected state {:?}", s),
+        s @ &mut AppStateImpl::Waiting { .. } | s @ &mut AppStateImpl::PollFinished { .. } => {
+            bug!("unexpected state {:?}", s)
+        },
         &mut AppStateImpl::Terminated => {
             panic!("Attempt to create a `Window` after the app has terminated")
         },
     }
+    let window_scene = this.window_scene.clone();
     drop(this);
+    show_window(window, window_scene.as_deref());
+}
+
+pub(crate) fn current_window_scene(mtm: MainThreadMarker) -> Option<Retained<UIWindowScene>> {
+    AppState::get_mut(mtm).window_scene.clone()
+}
+
+pub(crate) fn scene_connected(mtm: MainThreadMarker, window_scene: &UIWindowScene) {
+    let windows = {
+        let mut this = AppState::get_mut(mtm);
+        this.window_scene = Some(window_scene.retain());
+
+        match this.state_mut() {
+            AppStateImpl::NotLaunched { queued_windows, .. }
+            | AppStateImpl::Launching { queued_windows, .. } => mem::take(queued_windows),
+            AppStateImpl::ProcessingEvents { .. }
+            | AppStateImpl::InUserCallback { .. }
+            | AppStateImpl::ProcessingRedraws { .. } => Vec::new(),
+            s @ AppStateImpl::Waiting { .. } | s @ AppStateImpl::PollFinished { .. } => {
+                bug!("unexpected state {:?}", s)
+            },
+            AppStateImpl::Terminated => return,
+        }
+    };
+
+    for window in windows {
+        show_window(&window, Some(window_scene));
+    }
+}
+
+pub(crate) fn scene_disconnected(mtm: MainThreadMarker, window_scene: &UIWindowScene) {
+    let mut this = AppState::get_mut(mtm);
+    if this
+        .window_scene
+        .as_ref()
+        .is_some_and(|current_scene| ptr::eq(&**current_scene, window_scene))
+    {
+        this.window_scene = None;
+    }
+}
+
+fn show_window(window: &WinitUIWindow, window_scene: Option<&UIWindowScene>) {
+    if let Some(window_scene) = window_scene {
+        unsafe {
+            window.setWindowScene(Some(window_scene));
+        }
+    }
     window.makeKeyAndVisible();
 }
 
@@ -469,6 +522,7 @@ pub fn did_finish_launching(mtm: MainThreadMarker) {
     this.waker.start();
 
     // have to drop RefMut because the window setup code below can trigger new events
+    let window_scene = this.window_scene.clone();
     drop(this);
 
     for window in windows {
@@ -490,7 +544,7 @@ pub fn did_finish_launching(mtm: MainThreadMarker) {
         window.setRootViewController(None);
         window.setRootViewController(controller.as_deref());
 
-        window.makeKeyAndVisible();
+        show_window(&window, window_scene.as_deref());
     }
 
     let (windows, events) = AppState::get_mut(mtm).did_finish_launching_transition();
@@ -501,8 +555,9 @@ pub fn did_finish_launching(mtm: MainThreadMarker) {
 
     // the above window dance hack, could possibly trigger new windows to be created.
     // we can just set those windows up normally, as they were created after didFinishLaunching
+    let window_scene = AppState::get_mut(mtm).window_scene.clone();
     for window in windows {
-        window.makeKeyAndVisible();
+        show_window(&window, window_scene.as_deref());
     }
 }
 

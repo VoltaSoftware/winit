@@ -295,6 +295,7 @@ impl<T: 'static> EventLoop<T> {
         let handler = EventLoopHandler { handler, event_loop: self.window_target };
 
         app_state::will_launch(self.mtm, handler);
+        super::scene_delegate::register_scene_delegate_class();
 
         extern "C" {
             // These functions are in crt_externs.h.
