@@ -62,7 +62,7 @@ declare_class!(
 
     unsafe impl WinitView {
         #[method(drawRect:)]
-        fn draw_rect(&self, rect: CGRect) {
+        fn draw_rect(&self, _rect: CGRect) {
             let mtm = MainThreadMarker::new().unwrap();
             let window = self.window().unwrap();
             app_state::handle_nonuser_event(
@@ -72,7 +72,6 @@ declare_class!(
                     event: WindowEvent::RedrawRequested,
                 }),
             );
-            let _: () = unsafe { msg_send![super(self), drawRect: rect] };
         }
 
         #[method(layoutSubviews)]
@@ -386,6 +385,10 @@ impl WinitView {
         let this: Retained<Self> = unsafe { msg_send_id![super(this), initWithFrame: frame] };
 
         this.setMultipleTouchEnabled(true);
+        unsafe {
+            let _: () = msg_send![&this, setPaused: false];
+            let _: () = msg_send![&this, setEnableSetNeedsDisplay: false];
+        }
 
         if let Some(scale_factor) = window_attributes.platform_specific.scale_factor {
             this.setContentScaleFactor(scale_factor as _);
@@ -396,6 +399,20 @@ impl WinitView {
         }
 
         this
+    }
+
+    pub(crate) fn set_preferred_frames_per_second(&self, frames_per_second: isize) {
+        let frames_per_second = frames_per_second.max(1);
+        unsafe {
+            let _: () = msg_send![self, setPreferredFramesPerSecond: frames_per_second];
+        }
+    }
+
+    pub(crate) fn set_native_display_link_enabled(&self, enabled: bool) {
+        unsafe {
+            let _: () = msg_send![self, setEnableSetNeedsDisplay: false];
+            let _: () = msg_send![self, setPaused: !enabled];
+        }
     }
 
     fn window(&self) -> Option<Retained<WinitUIWindow>> {
