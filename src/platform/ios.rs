@@ -116,6 +116,16 @@ pub trait WindowExtIOS {
     /// [`-[UIViewController attemptRotationToDeviceOrientation]`](https://developer.apple.com/documentation/uikit/uiviewcontroller/1621400-attemptrotationtodeviceorientati?language=objc).
     fn set_valid_orientations(&self, valid_orientations: ValidOrientations);
 
+    /// Sets the preferred redraw rate for the underlying `MTKView`.
+    ///
+    /// The system may choose the nearest stable frame rate supported by the current display.
+    fn set_preferred_frames_per_second(&self, frames_per_second: i32);
+
+    /// Sets whether the underlying `MTKView` should drive redraws with its native display link.
+    ///
+    /// When disabled, callers can pace redraws manually with [`Window::request_redraw`].
+    fn set_native_display_link_enabled(&self, enabled: bool);
+
     /// Sets whether the [`Window`] prefers the home indicator hidden.
     ///
     /// The default is to prefer showing the home indicator.
@@ -203,6 +213,17 @@ impl WindowExtIOS for Window {
     #[inline]
     fn set_valid_orientations(&self, valid_orientations: ValidOrientations) {
         self.window.maybe_queue_on_main(move |w| w.set_valid_orientations(valid_orientations))
+    }
+
+    #[inline]
+    fn set_preferred_frames_per_second(&self, frames_per_second: i32) {
+        self.window
+            .maybe_queue_on_main(move |w| w.set_preferred_frames_per_second(frames_per_second))
+    }
+
+    #[inline]
+    fn set_native_display_link_enabled(&self, enabled: bool) {
+        self.window.maybe_queue_on_main(move |w| w.set_native_display_link_enabled(enabled))
     }
 
     #[inline]

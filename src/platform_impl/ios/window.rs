@@ -5,9 +5,7 @@ use std::collections::VecDeque;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
-use objc2_foundation::{
-    CGFloat, CGPoint, CGRect, CGSize, MainThreadBound, MainThreadMarker, NSObjectProtocol,
-};
+use objc2_foundation::{CGFloat, CGPoint, CGRect, CGSize, MainThreadBound, MainThreadMarker};
 use objc2_ui_kit::{
     UIApplication, UICoordinateSpace, UIResponder, UIScreen, UIScreenOverscanCompensation,
     UIViewController, UIWindow,
@@ -543,8 +541,12 @@ impl Window {
 
         let view = WinitView::new(mtm, &window_attributes, frame, screen_max_frames_per_second);
 
-        let gl_or_metal_backed =
-            view.isKindOfClass(class!(CAMetalLayer)) || view.isKindOfClass(class!(CAEAGLLayer));
+        let layer: *mut AnyObject = unsafe { msg_send![&view, layer] };
+        let gl_or_metal_backed = unsafe {
+            let is_metal: bool = msg_send![layer, isKindOfClass: class!(CAMetalLayer)];
+            let is_gl: bool = msg_send![layer, isKindOfClass: class!(CAEAGLLayer)];
+            is_metal || is_gl
+        };
 
         let view_controller = WinitViewController::new(mtm, &window_attributes, &view);
         let window = WinitUIWindow::new(mtm, &window_attributes, frame, &view_controller);
@@ -631,6 +633,14 @@ impl Inner {
             MainThreadMarker::new().unwrap(),
             valid_orientations,
         );
+    }
+
+    pub fn set_preferred_frames_per_second(&self, frames_per_second: i32) {
+        self.view.set_preferred_frames_per_second(frames_per_second.max(1) as isize);
+    }
+
+    pub fn set_native_display_link_enabled(&self, enabled: bool) {
+        self.view.set_native_display_link_enabled(enabled);
     }
 
     pub fn set_prefers_home_indicator_hidden(&self, hidden: bool) {
