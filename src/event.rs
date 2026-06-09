@@ -54,6 +54,19 @@ use crate::platform_impl;
 use crate::window::Window;
 use crate::window::{ActivationToken, Theme, WindowId};
 
+/// Android activity lifecycle notifications that are independent from surface
+/// lifecycle. These are emitted while handling `android_activity::MainEvent`
+/// callbacks on the native app thread.
+#[cfg(target_os = "android")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AndroidLifecycle {
+    Start,
+    Resume,
+    Pause,
+    Stop,
+    Destroy,
+}
+
 /// Describes a generic event.
 ///
 /// See the module-level docs for more information on the event loop manages each event.
@@ -103,6 +116,12 @@ pub enum Event<T: 'static> {
     ///
     /// [`ApplicationHandler::memory_warning`]: crate::application::ApplicationHandler::memory_warning
     MemoryWarning,
+
+    /// See [`ApplicationHandler::android_lifecycle`] for details.
+    ///
+    /// [`ApplicationHandler::android_lifecycle`]: crate::application::ApplicationHandler::android_lifecycle
+    #[cfg(target_os = "android")]
+    AndroidLifecycle(AndroidLifecycle),
 }
 
 impl<T> Event<T> {
@@ -119,6 +138,8 @@ impl<T> Event<T> {
             Suspended => Ok(Suspended),
             Resumed => Ok(Resumed),
             MemoryWarning => Ok(MemoryWarning),
+            #[cfg(target_os = "android")]
+            AndroidLifecycle(lifecycle) => Ok(AndroidLifecycle(lifecycle)),
         }
     }
 }

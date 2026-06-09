@@ -121,10 +121,15 @@ impl<T> EventLoopBuilder<T> {
 
         // Certain platforms accept a mutable reference in their API.
         #[allow(clippy::unnecessary_mut_passed)]
-        Ok(EventLoop {
-            event_loop: platform_impl::EventLoop::new(&mut self.platform_specific)?,
-            _marker: PhantomData,
-        })
+        let event_loop = match platform_impl::EventLoop::new(&mut self.platform_specific) {
+            Ok(event_loop) => event_loop,
+            Err(error) => {
+                EVENT_LOOP_CREATED.store(false, Ordering::Relaxed);
+                return Err(error);
+            },
+        };
+
+        Ok(EventLoop { event_loop, _marker: PhantomData })
     }
 
     #[cfg(web_platform)]
@@ -228,7 +233,10 @@ impl<T> EventLoop<T> {
     {
         let _span = tracing::debug_span!("winit::EventLoop::run").entered();
 
-        self.event_loop.run(event_handler)
+        let result = self.event_loop.run(event_handler);
+        #[cfg(android_platform)]
+        EVENT_LOOP_CREATED.store(false, Ordering::Relaxed);
+        result
     }
 
     /// Run the application with the event loop on the calling thread.
@@ -262,7 +270,11 @@ impl<T> EventLoop<T> {
     #[inline]
     #[cfg(not(all(web_platform, target_feature = "exception-handling")))]
     pub fn run_app<A: ApplicationHandler<T>>(self, app: &mut A) -> Result<(), EventLoopError> {
-        self.event_loop.run(|event, event_loop| dispatch_event_for_app(app, event_loop, event))
+        let result =
+            self.event_loop.run(|event, event_loop| dispatch_event_for_app(app, event_loop, event));
+        #[cfg(android_platform)]
+        EVENT_LOOP_CREATED.store(false, Ordering::Relaxed);
+        result
     }
 
     /// Creates an [`EventLoopProxy`] that can be used to dispatch user events
@@ -647,5 +659,7 @@ pub(crate) fn dispatch_event_for_app<T: 'static, A: ApplicationHandler<T>>(
         Event::AboutToWait => app.about_to_wait(event_loop),
         Event::LoopExiting => app.exiting(event_loop),
         Event::MemoryWarning => app.memory_warning(event_loop),
+        #[cfg(target_os = "android")]
+        Event::AndroidLifecycle(lifecycle) => app.android_lifecycle(event_loop, lifecycle),
     }
 }

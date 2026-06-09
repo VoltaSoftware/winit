@@ -1,5 +1,7 @@
 //! End user application handling.
 
+#[cfg(target_os = "android")]
+use crate::event::AndroidLifecycle;
 use crate::event::{DeviceEvent, DeviceId, StartCause, WindowEvent};
 use crate::event_loop::ActiveEventLoop;
 use crate::window::WindowId;
@@ -222,6 +224,18 @@ pub trait ApplicationHandler<T: 'static = ()> {
     fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
         let _ = event_loop;
     }
+
+    /// Emitted when Android sends an Activity lifecycle notification.
+    ///
+    /// Unlike [`resumed`] and [`suspended`], this follows the Android Activity lifecycle rather
+    /// than the Android surface lifecycle.
+    ///
+    /// [`resumed`]: Self::resumed
+    /// [`suspended`]: Self::suspended
+    #[cfg(target_os = "android")]
+    fn android_lifecycle(&mut self, event_loop: &ActiveEventLoop, lifecycle: AndroidLifecycle) {
+        let _ = (event_loop, lifecycle);
+    }
 }
 
 impl<A: ?Sized + ApplicationHandler<T>, T: 'static> ApplicationHandler<T> for &mut A {
@@ -279,6 +293,12 @@ impl<A: ?Sized + ApplicationHandler<T>, T: 'static> ApplicationHandler<T> for &m
     fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
         (**self).memory_warning(event_loop);
     }
+
+    #[cfg(target_os = "android")]
+    #[inline]
+    fn android_lifecycle(&mut self, event_loop: &ActiveEventLoop, lifecycle: AndroidLifecycle) {
+        (**self).android_lifecycle(event_loop, lifecycle);
+    }
 }
 
 impl<A: ?Sized + ApplicationHandler<T>, T: 'static> ApplicationHandler<T> for Box<A> {
@@ -335,5 +355,11 @@ impl<A: ?Sized + ApplicationHandler<T>, T: 'static> ApplicationHandler<T> for Bo
     #[inline]
     fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
         (**self).memory_warning(event_loop);
+    }
+
+    #[cfg(target_os = "android")]
+    #[inline]
+    fn android_lifecycle(&mut self, event_loop: &ActiveEventLoop, lifecycle: AndroidLifecycle) {
+        (**self).android_lifecycle(event_loop, lifecycle);
     }
 }

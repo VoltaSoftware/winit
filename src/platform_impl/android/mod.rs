@@ -266,11 +266,17 @@ impl<T: 'static> EventLoop<T> {
                     callback(event::Event::MemoryWarning, self.window_target());
                 },
                 MainEvent::Start => {
-                    // XXX: how to forward this state to applications?
-                    warn!("TODO: forward onStart notification to application");
+                    callback(
+                        event::Event::AndroidLifecycle(event::AndroidLifecycle::Start),
+                        self.window_target(),
+                    );
                 },
                 MainEvent::Resume { .. } => {
                     debug!("App Resumed - is running");
+                    callback(
+                        event::Event::AndroidLifecycle(event::AndroidLifecycle::Resume),
+                        self.window_target(),
+                    );
                     self.running = true;
                 },
                 MainEvent::SaveState { .. } => {
@@ -280,16 +286,24 @@ impl<T: 'static> EventLoop<T> {
                 },
                 MainEvent::Pause => {
                     debug!("App Paused - stopped running");
+                    callback(
+                        event::Event::AndroidLifecycle(event::AndroidLifecycle::Pause),
+                        self.window_target(),
+                    );
                     self.running = false;
                 },
                 MainEvent::Stop => {
-                    // XXX: how to forward this state to applications?
-                    warn!("TODO: forward onStop notification to application");
+                    callback(
+                        event::Event::AndroidLifecycle(event::AndroidLifecycle::Stop),
+                        self.window_target(),
+                    );
                 },
                 MainEvent::Destroy => {
-                    // XXX: maybe exit mainloop to drop things before being
-                    // killed by the OS?
-                    warn!("TODO: forward onDestroy notification to application");
+                    callback(
+                        event::Event::AndroidLifecycle(event::AndroidLifecycle::Destroy),
+                        self.window_target(),
+                    );
+                    self.window_target().exit();
                 },
                 MainEvent::InsetsChanged { .. } => {
                     // XXX: how to forward this state to applications?
