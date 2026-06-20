@@ -121,6 +121,7 @@ enum AppStateImpl {
     },
     ProcessingRedraws {
         handler: EventLoopHandler,
+        queued_gpu_redraws: HashSet<Retained<WinitUIWindow>>,
         active_control_flow: ControlFlow,
     },
     Waiting {
@@ -139,6 +140,7 @@ pub(crate) struct AppState {
     control_flow: ControlFlow,
     waker: EventLoopWaker,
     window_scene: Option<Retained<UIWindowScene>>,
+    deferred_gpu_redraws: HashSet<Retained<WinitUIWindow>>,
 }
 
 impl AppState {
@@ -165,6 +167,7 @@ impl AppState {
                     control_flow: ControlFlow::default(),
                     waker,
                     window_scene: None,
+                    deferred_gpu_redraws: HashSet::new(),
                 });
             }
             init_guard(&mut guard);
@@ -290,9 +293,10 @@ impl AppState {
             s => bug!("`EventHandler` unexpectedly woke up {:?}", s),
         };
 
+        let queued_gpu_redraws = mem::take(&mut self.deferred_gpu_redraws);
         self.set_state(AppStateImpl::ProcessingEvents {
             handler,
-            queued_gpu_redraws: Default::default(),
+            queued_gpu_redraws,
             active_control_flow: self.control_flow,
         });
         Some(event)
@@ -336,9 +340,11 @@ impl AppState {
             AppStateImpl::ProcessingEvents { handler, queued_gpu_redraws, active_control_flow } => {
                 (handler, queued_gpu_redraws, active_control_flow, false)
             },
-            AppStateImpl::ProcessingRedraws { handler, active_control_flow } => {
-                (handler, Default::default(), active_control_flow, true)
-            },
+            AppStateImpl::ProcessingRedraws {
+                handler,
+                queued_gpu_redraws,
+                active_control_flow,
+            } => (handler, queued_gpu_redraws, active_control_flow, true),
             AppStateImpl::PollFinished { .. }
             | AppStateImpl::Waiting { .. }
             | AppStateImpl::Terminated => unreachable!(),
@@ -357,7 +363,11 @@ impl AppState {
             },
             s => bug!("unexpected state {:?}", s),
         };
-        self.set_state(AppStateImpl::ProcessingRedraws { handler, active_control_flow });
+        self.set_state(AppStateImpl::ProcessingRedraws {
+            handler,
+            queued_gpu_redraws: HashSet::new(),
+            active_control_flow,
+        });
         queued_gpu_redraws
     }
 
@@ -365,35 +375,57 @@ impl AppState {
         if !self.has_launched() || self.has_terminated() {
             return;
         }
-        let (waiting_handler, old) = match self.take_state() {
-            AppStateImpl::ProcessingRedraws { handler, active_control_flow } => {
-                (handler, active_control_flow)
-            },
+        let (waiting_handler, queued_gpu_redraws, old) = match self.take_state() {
+            AppStateImpl::ProcessingRedraws {
+                handler,
+                queued_gpu_redraws,
+                active_control_flow,
+            } => (handler, queued_gpu_redraws, active_control_flow),
             s => bug!("unexpected state {:?}", s),
         };
+        let has_deferred_redraws =
+            !queued_gpu_redraws.is_empty() || !self.deferred_gpu_redraws.is_empty();
+        self.deferred_gpu_redraws.extend(queued_gpu_redraws);
 
         let new = self.control_flow;
         match (old, new) {
             (ControlFlow::Wait, ControlFlow::Wait) => {
                 let start = Instant::now();
                 self.set_state(AppStateImpl::Waiting { waiting_handler, start });
-                self.waker.stop()
+                if has_deferred_redraws {
+                    self.waker.start()
+                } else {
+                    self.waker.stop()
+                }
             },
             (ControlFlow::WaitUntil(old_instant), ControlFlow::WaitUntil(new_instant))
                 if old_instant == new_instant =>
             {
                 let start = Instant::now();
                 self.set_state(AppStateImpl::Waiting { waiting_handler, start });
+                if has_deferred_redraws {
+                    self.waker.start()
+                } else {
+                    self.waker.start_at(new_instant)
+                }
             },
             (_, ControlFlow::Wait) => {
                 let start = Instant::now();
                 self.set_state(AppStateImpl::Waiting { waiting_handler, start });
-                self.waker.stop()
+                if has_deferred_redraws {
+                    self.waker.start()
+                } else {
+                    self.waker.stop()
+                }
             },
             (_, ControlFlow::WaitUntil(new_instant)) => {
                 let start = Instant::now();
                 self.set_state(AppStateImpl::Waiting { waiting_handler, start });
-                self.waker.start_at(new_instant)
+                if has_deferred_redraws {
+                    self.waker.start()
+                } else {
+                    self.waker.start_at(new_instant)
+                }
             },
             // Unlike on macOS, handle Poll to Poll transition here to call the waker
             (_, ControlFlow::Poll) => {
@@ -499,9 +531,13 @@ pub(crate) fn queue_gl_or_metal_redraw(mtm: MainThreadMarker, window: Retained<W
         | &mut AppStateImpl::InUserCallback { ref mut queued_gpu_redraws, .. } => {
             let _ = queued_gpu_redraws.insert(window);
         },
-        s @ &mut AppStateImpl::ProcessingRedraws { .. }
-        | s @ &mut AppStateImpl::Waiting { .. }
-        | s @ &mut AppStateImpl::PollFinished { .. } => bug!("unexpected state {:?}", s),
+        &mut AppStateImpl::ProcessingRedraws { ref mut queued_gpu_redraws, .. } => {
+            let _ = queued_gpu_redraws.insert(window);
+        },
+        &mut AppStateImpl::Waiting { .. } | &mut AppStateImpl::PollFinished { .. } => {
+            let _ = this.deferred_gpu_redraws.insert(window);
+            this.waker.start();
+        },
         &mut AppStateImpl::Terminated => {
             panic!("Attempt to create a `Window` after the app has terminated")
         },
@@ -633,11 +669,7 @@ pub(crate) fn handle_nonuser_events<I: IntoIterator<Item = EventWrapper>>(
                 _ => unreachable!(),
             };
             this.app_state = Some(if processing_redraws {
-                bug_assert!(
-                    queued_gpu_redraws.is_empty(),
-                    "redraw queued while processing redraws"
-                );
-                AppStateImpl::ProcessingRedraws { handler, active_control_flow }
+                AppStateImpl::ProcessingRedraws { handler, queued_gpu_redraws, active_control_flow }
             } else {
                 AppStateImpl::ProcessingEvents { handler, queued_gpu_redraws, active_control_flow }
             });
