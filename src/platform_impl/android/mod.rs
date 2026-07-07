@@ -406,6 +406,13 @@ impl<T: 'static> EventLoop<T> {
                     let pointers: Box<dyn Iterator<Item = android_activity::input::Pointer<'_>>> =
                         match phase {
                             event::TouchPhase::Started | event::TouchPhase::Ended => {
+                                // We need to manually check before calling cuz android-activity panics here otherwise
+                                // https://github.com/rust-mobile/android-activity/blob/main/android-activity/src/game_activity/input.rs#L139
+                                let pointer_index = motion_event.pointer_index();
+                                if pointer_index >= motion_event.pointer_count() {
+                                    return InputStatus::Handled;
+                                }
+
                                 Box::new(std::iter::once(
                                     motion_event.pointer_at_index(motion_event.pointer_index()),
                                 ))
