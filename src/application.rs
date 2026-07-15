@@ -63,9 +63,9 @@ pub trait ApplicationHandler<T: 'static = ()> {
     ///
     /// ## iOS
     ///
-    /// On iOS, the `Resumed` event is emitted in response to an [`applicationDidBecomeActive`]
-    /// callback which means the application is "active" (according to the
-    /// [iOS application lifecycle]).
+    /// On iOS, the first `Resumed` event is emitted in response to an
+    /// [`applicationDidBecomeActive`] callback. Later events are emitted when the application
+    /// becomes active after returning from the background.
     ///
     /// [`applicationDidBecomeActive`]: https://developer.apple.com/documentation/uikit/uiapplicationdelegate/1622956-applicationdidbecomeactive
     /// [iOS application lifecycle]: https://developer.apple.com/documentation/uikit/app_and_environment/managing_your_app_s_life_cycle
@@ -165,12 +165,11 @@ pub trait ApplicationHandler<T: 'static = ()> {
     ///
     /// ## iOS
     ///
-    /// On iOS, the `Suspended` event is currently emitted in response to an
-    /// [`applicationWillResignActive`] callback which means that the application is
-    /// about to transition from the active to inactive state (according to the
-    /// [iOS application lifecycle]).
+    /// On iOS, the `Suspended` event is emitted in response to an
+    /// [`applicationDidEnterBackground`] callback. Brief inactive transitions, such as system
+    /// dialogs, do not suspend the application.
     ///
-    /// [`applicationWillResignActive`]: https://developer.apple.com/documentation/uikit/uiapplicationdelegate/1622950-applicationwillresignactive
+    /// [`applicationDidEnterBackground`]: https://developer.apple.com/documentation/uikit/uiapplicationdelegate/1622997-applicationdidenterbackground
     /// [iOS application lifecycle]: https://developer.apple.com/documentation/uikit/app_and_environment/managing_your_app_s_life_cycle
     ///
     /// ## Web

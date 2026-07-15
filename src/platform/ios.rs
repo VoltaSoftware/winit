@@ -58,8 +58,8 @@
 //!
 //! This is how those event are represented in winit:
 //!
-//!  - applicationDidBecomeActive is Resumed
-//!  - applicationWillResignActive is Suspended
+//!  - applicationDidBecomeActive after launch or background is Resumed
+//!  - applicationDidEnterBackground is Suspended
 //!  - applicationWillTerminate is LoopExiting
 //!
 //! Keep in mind that after LoopExiting event is received every attempt to draw with

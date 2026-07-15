@@ -1,7 +1,9 @@
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_int, c_void};
 use std::marker::PhantomData;
 use std::ptr::{self, NonNull};
+use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use core_foundation::base::{CFIndex, CFRelease};
@@ -18,8 +20,8 @@ use objc2_ui_kit::{
     UIApplication, UIApplicationDidBecomeActiveNotification,
     UIApplicationDidEnterBackgroundNotification, UIApplicationDidFinishLaunchingNotification,
     UIApplicationDidReceiveMemoryWarningNotification, UIApplicationMain,
-    UIApplicationWillEnterForegroundNotification, UIApplicationWillResignActiveNotification,
-    UIApplicationWillTerminateNotification, UIDevice, UIScreen, UIUserInterfaceIdiom,
+    UIApplicationWillEnterForegroundNotification, UIApplicationWillTerminateNotification, UIDevice,
+    UIScreen, UIUserInterfaceIdiom,
 };
 
 use crate::error::EventLoopError;
@@ -145,7 +147,6 @@ pub struct EventLoop<T: 'static> {
     // Though we do still need to keep the observers around to prevent them from being deallocated.
     _did_finish_launching_observer: Retained<NSObject>,
     _did_become_active_observer: Retained<NSObject>,
-    _will_resign_active_observer: Retained<NSObject>,
     _will_enter_foreground_observer: Retained<NSObject>,
     _did_enter_background_observer: Retained<NSObject>,
     _will_terminate_observer: Retained<NSObject>,
@@ -177,6 +178,8 @@ impl<T: 'static> EventLoop<T> {
         setup_control_flow_observers();
 
         let center = unsafe { NSNotificationCenter::defaultCenter() };
+        // The first activation is Winit's required initial resume.
+        let suspended = Rc::new(Cell::new(true));
 
         let _did_finish_launching_observer = create_observer(
             &center,
@@ -186,20 +189,15 @@ impl<T: 'static> EventLoop<T> {
                 app_state::did_finish_launching(mtm);
             },
         );
+        let did_become_active_suspended = Rc::clone(&suspended);
         let _did_become_active_observer = create_observer(
             &center,
             // `applicationDidBecomeActive:`
             unsafe { UIApplicationDidBecomeActiveNotification },
             move |_| {
-                app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Resumed));
-            },
-        );
-        let _will_resign_active_observer = create_observer(
-            &center,
-            // `applicationWillResignActive:`
-            unsafe { UIApplicationWillResignActiveNotification },
-            move |_| {
-                app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Suspended));
+                if did_become_active_suspended.replace(false) {
+                    app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Resumed));
+                }
             },
         );
         let _will_enter_foreground_observer = create_observer(
@@ -216,6 +214,7 @@ impl<T: 'static> EventLoop<T> {
                 send_occluded_event_for_all_windows(&app, false);
             },
         );
+        let did_enter_background_suspended = Rc::clone(&suspended);
         let _did_enter_background_observer = create_observer(
             &center,
             // `applicationDidEnterBackground:`
@@ -228,6 +227,12 @@ impl<T: 'static> EventLoop<T> {
                 // documented to be `UIApplication`.
                 let app: Retained<UIApplication> = unsafe { Retained::cast(app) };
                 send_occluded_event_for_all_windows(&app, true);
+                if !did_enter_background_suspended.replace(true) {
+                    app_state::handle_nonuser_event(
+                        mtm,
+                        EventWrapper::StaticEvent(Event::Suspended),
+                    );
+                }
             },
         );
         let _will_terminate_observer = create_observer(
@@ -262,7 +267,6 @@ impl<T: 'static> EventLoop<T> {
             window_target: RootActiveEventLoop { p: ActiveEventLoop { mtm }, _marker: PhantomData },
             _did_finish_launching_observer,
             _did_become_active_observer,
-            _will_resign_active_observer,
             _will_enter_foreground_observer,
             _did_enter_background_observer,
             _will_terminate_observer,
