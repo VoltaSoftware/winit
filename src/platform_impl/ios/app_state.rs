@@ -752,7 +752,7 @@ fn handle_user_events(mtm: MainThreadMarker) {
     }
 }
 
-pub(crate) fn send_occluded_event_for_all_windows(application: &UIApplication, occluded: bool) {
+fn send_window_event_for_all_windows(application: &UIApplication, event: impl Fn() -> WindowEvent) {
     let mtm = MainThreadMarker::from(application);
 
     let mut events = Vec::new();
@@ -767,11 +767,19 @@ pub(crate) fn send_occluded_event_for_all_windows(application: &UIApplication, o
             };
             events.push(EventWrapper::StaticEvent(Event::WindowEvent {
                 window_id: RootWindowId(window.id()),
-                event: WindowEvent::Occluded(occluded),
+                event: event(),
             }));
         }
     }
     handle_nonuser_events(mtm, events);
+}
+
+pub(crate) fn send_focused_event_for_all_windows(application: &UIApplication, focused: bool) {
+    send_window_event_for_all_windows(application, || WindowEvent::Focused(focused));
+}
+
+pub(crate) fn send_occluded_event_for_all_windows(application: &UIApplication, occluded: bool) {
+    send_window_event_for_all_windows(application, || WindowEvent::Occluded(occluded));
 }
 
 pub fn handle_main_events_cleared(mtm: MainThreadMarker) {

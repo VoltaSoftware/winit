@@ -20,8 +20,8 @@ use objc2_ui_kit::{
     UIApplication, UIApplicationDidBecomeActiveNotification,
     UIApplicationDidEnterBackgroundNotification, UIApplicationDidFinishLaunchingNotification,
     UIApplicationDidReceiveMemoryWarningNotification, UIApplicationMain,
-    UIApplicationWillEnterForegroundNotification, UIApplicationWillTerminateNotification, UIDevice,
-    UIScreen, UIUserInterfaceIdiom,
+    UIApplicationWillEnterForegroundNotification, UIApplicationWillResignActiveNotification,
+    UIApplicationWillTerminateNotification, UIDevice, UIScreen, UIUserInterfaceIdiom,
 };
 
 use crate::error::EventLoopError;
@@ -33,7 +33,9 @@ use crate::platform::ios::Idiom;
 use crate::platform_impl::ios::app_state::{EventLoopHandler, HandlePendingUserEvents};
 use crate::window::{CustomCursor, CustomCursorSource, Theme};
 
-use super::app_state::{send_occluded_event_for_all_windows, AppState, EventWrapper};
+use super::app_state::{
+    send_focused_event_for_all_windows, send_occluded_event_for_all_windows, AppState, EventWrapper,
+};
 use super::notification_center::create_observer;
 use super::{app_state, monitor, MonitorHandle};
 
@@ -147,6 +149,7 @@ pub struct EventLoop<T: 'static> {
     // Though we do still need to keep the observers around to prevent them from being deallocated.
     _did_finish_launching_observer: Retained<NSObject>,
     _did_become_active_observer: Retained<NSObject>,
+    _will_resign_active_observer: Retained<NSObject>,
     _will_enter_foreground_observer: Retained<NSObject>,
     _did_enter_background_observer: Retained<NSObject>,
     _will_terminate_observer: Retained<NSObject>,
@@ -194,10 +197,27 @@ impl<T: 'static> EventLoop<T> {
             &center,
             // `applicationDidBecomeActive:`
             unsafe { UIApplicationDidBecomeActiveNotification },
-            move |_| {
+            move |notification| {
+                let app = unsafe { notification.object() }
+                    .expect("UIApplicationDidBecomeActiveNotification to have application object");
+                // SAFETY: The notification object is documented to be `UIApplication`.
+                let app: Retained<UIApplication> = unsafe { Retained::cast(app) };
+                send_focused_event_for_all_windows(&app, true);
                 if did_become_active_suspended.replace(false) {
                     app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Resumed));
                 }
+            },
+        );
+        let _will_resign_active_observer = create_observer(
+            &center,
+            // `applicationWillResignActive:`
+            unsafe { UIApplicationWillResignActiveNotification },
+            move |notification| {
+                let app = unsafe { notification.object() }
+                    .expect("UIApplicationWillResignActiveNotification to have application object");
+                // SAFETY: The notification object is documented to be `UIApplication`.
+                let app: Retained<UIApplication> = unsafe { Retained::cast(app) };
+                send_focused_event_for_all_windows(&app, false);
             },
         );
         let _will_enter_foreground_observer = create_observer(
@@ -267,6 +287,7 @@ impl<T: 'static> EventLoop<T> {
             window_target: RootActiveEventLoop { p: ActiveEventLoop { mtm }, _marker: PhantomData },
             _did_finish_launching_observer,
             _did_become_active_observer,
+            _will_resign_active_observer,
             _will_enter_foreground_observer,
             _did_enter_background_observer,
             _will_terminate_observer,

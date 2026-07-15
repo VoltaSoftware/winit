@@ -285,18 +285,18 @@ impl<T: 'static> EventLoop<T> {
                     warn!("TODO: forward saveState notification to application");
                 },
                 MainEvent::Pause => {
-                    debug!("App Paused - stopped running");
+                    debug!("App Paused - remaining active while visible");
                     callback(
                         event::Event::AndroidLifecycle(event::AndroidLifecycle::Pause),
                         self.window_target(),
                     );
-                    self.running = false;
                 },
                 MainEvent::Stop => {
                     callback(
                         event::Event::AndroidLifecycle(event::AndroidLifecycle::Stop),
                         self.window_target(),
                     );
+                    self.running = false;
                 },
                 MainEvent::Destroy => {
                     callback(

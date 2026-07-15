@@ -59,6 +59,7 @@
 //! This is how those event are represented in winit:
 //!
 //!  - applicationDidBecomeActive after launch or background is Resumed
+//!  - applicationWillResignActive and applicationDidBecomeActive update window focus
 //!  - applicationDidEnterBackground is Suspended
 //!  - applicationWillTerminate is LoopExiting
 //!
