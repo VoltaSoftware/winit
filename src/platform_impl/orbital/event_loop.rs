@@ -388,6 +388,8 @@ impl<T: 'static> EventLoop<T> {
                             },
                         },
                         is_synthetic: false,
+                        // Orbital events carry no time.
+                        time: Instant::now(),
                     },
                 });
 
@@ -432,6 +434,7 @@ impl<T: 'static> EventLoop<T> {
                             device_id: event::DeviceId(DeviceId),
                             state,
                             button,
+                            time: Instant::now(),
                         },
                     });
                 }

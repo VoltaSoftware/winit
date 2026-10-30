@@ -2,6 +2,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::ptr;
+use std::time::Instant;
 
 use objc2::rc::{Retained, WeakId};
 use objc2::runtime::{AnyObject, Sel};
@@ -13,7 +14,7 @@ use objc2_app_kit::{
 use objc2_foundation::{
     MainThreadMarker, NSArray, NSAttributedString, NSAttributedStringKey, NSCopying,
     NSMutableAttributedString, NSNotFound, NSNotificationCenter, NSObject, NSObjectProtocol,
-    NSPoint, NSRange, NSRect, NSSize, NSString, NSUInteger,
+    NSPoint, NSProcessInfo, NSRange, NSRect, NSSize, NSString, NSUInteger,
 };
 
 use super::app_state::ApplicationDelegate;
@@ -493,6 +494,7 @@ declare_class!(
                     device_id: DEVICE_ID,
                     event: key_event,
                     is_synthetic: false,
+                    time: event_time(&event),
                 });
             }
         }
@@ -513,6 +515,7 @@ declare_class!(
                     device_id: DEVICE_ID,
                     event: create_key_event(&event, false, false),
                     is_synthetic: false,
+                    time: event_time(&event),
                 });
             }
         }
@@ -558,12 +561,14 @@ declare_class!(
                 .expect("could not find current event");
 
             self.update_modifiers(&event, false);
+            let time = event_time(&event);
             let event = create_key_event(&event, true, unsafe { event.isARepeat() });
 
             self.queue_event(WindowEvent::KeyboardInput {
                 device_id: DEVICE_ID,
                 event,
                 is_synthetic: false,
+                time,
             });
         }
 
@@ -950,6 +955,7 @@ impl WinitView {
                     break 'send_event;
                 };
 
+                let time = event_time(ns_event);
                 let mut event = KeyEvent {
                     location: code_to_location(physical_key),
                     logical_key: logical_key.clone(),
@@ -988,6 +994,7 @@ impl WinitView {
                             device_id: DEVICE_ID,
                             event,
                             is_synthetic: false,
+                            time,
                         });
                     }
                     if phys_mod.contains(ModLocationMask::RIGHT) {
@@ -997,6 +1004,7 @@ impl WinitView {
                             device_id: DEVICE_ID,
                             event,
                             is_synthetic: false,
+                            time,
                         });
                     }
                     *phys_mod = ModLocationMask::empty();
@@ -1028,6 +1036,7 @@ impl WinitView {
                         device_id: DEVICE_ID,
                         event,
                         is_synthetic: false,
+                        time,
                     });
                 }
 
@@ -1055,6 +1064,7 @@ impl WinitView {
             device_id: DEVICE_ID,
             state: button_state,
             button,
+            time: event_time(event),
         });
     }
 
@@ -1084,6 +1094,12 @@ impl WinitView {
             position: view_point.to_physical(self.scale_factor()),
         });
     }
+}
+
+/// When the event happened: `NSEvent` timestamps count seconds since boot, as `systemUptime` does.
+fn event_time(event: &NSEvent) -> Instant {
+    let uptime = unsafe { NSProcessInfo::processInfo().systemUptime() };
+    crate::utils::input_time(uptime - unsafe { event.timestamp() })
 }
 
 /// Get the mouse button from the NSEvent.

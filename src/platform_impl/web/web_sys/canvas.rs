@@ -10,6 +10,7 @@ use web_sys::{
     CssStyleDeclaration, Document, Event, FocusEvent, HtmlCanvasElement, KeyboardEvent,
     PointerEvent, WheelEvent,
 };
+use web_time::Instant;
 
 use crate::dpi::{LogicalPosition, PhysicalPosition, PhysicalSize};
 use crate::error::OsError as RootOE;
@@ -271,7 +272,8 @@ impl Canvas {
 
     pub fn on_keyboard_release<F>(&mut self, mut handler: F)
     where
-        F: 'static + FnMut(PhysicalKey, Key, Option<SmolStr>, KeyLocation, bool, ModifiersState),
+        F: 'static
+            + FnMut(PhysicalKey, Key, Option<SmolStr>, KeyLocation, bool, ModifiersState, Instant),
     {
         let prevent_default = Rc::clone(&self.prevent_default);
         self.on_keyboard_release =
@@ -288,13 +290,15 @@ impl Canvas {
                     event::key_location(&event),
                     event.repeat(),
                     modifiers,
+                    event::event_time(&event),
                 );
             }));
     }
 
     pub fn on_keyboard_press<F>(&mut self, mut handler: F)
     where
-        F: 'static + FnMut(PhysicalKey, Key, Option<SmolStr>, KeyLocation, bool, ModifiersState),
+        F: 'static
+            + FnMut(PhysicalKey, Key, Option<SmolStr>, KeyLocation, bool, ModifiersState, Instant),
     {
         let prevent_default = Rc::clone(&self.prevent_default);
         self.on_keyboard_press =
@@ -311,6 +315,7 @@ impl Canvas {
                     event::key_location(&event),
                     event.repeat(),
                     modifiers,
+                    event::event_time(&event),
                 );
             }));
     }
@@ -331,16 +336,16 @@ impl Canvas {
 
     pub fn on_mouse_release<M, T>(&mut self, mouse_handler: M, touch_handler: T)
     where
-        M: 'static + FnMut(ModifiersState, i32, PhysicalPosition<f64>, MouseButton),
-        T: 'static + FnMut(ModifiersState, i32, PhysicalPosition<f64>, Force),
+        M: 'static + FnMut(ModifiersState, i32, PhysicalPosition<f64>, MouseButton, Instant),
+        T: 'static + FnMut(ModifiersState, i32, PhysicalPosition<f64>, Force, Instant),
     {
         self.pointer_handler.on_mouse_release(&self.common, mouse_handler, touch_handler)
     }
 
     pub fn on_mouse_press<M, T>(&mut self, mouse_handler: M, touch_handler: T)
     where
-        M: 'static + FnMut(ModifiersState, i32, PhysicalPosition<f64>, MouseButton),
-        T: 'static + FnMut(ModifiersState, i32, PhysicalPosition<f64>, Force),
+        M: 'static + FnMut(ModifiersState, i32, PhysicalPosition<f64>, MouseButton, Instant),
+        T: 'static + FnMut(ModifiersState, i32, PhysicalPosition<f64>, Force, Instant),
     {
         self.pointer_handler.on_mouse_press(
             &self.common,
@@ -354,8 +359,13 @@ impl Canvas {
     where
         M: 'static + FnMut(ModifiersState, i32, &mut dyn Iterator<Item = PhysicalPosition<f64>>),
         T: 'static
-            + FnMut(ModifiersState, i32, &mut dyn Iterator<Item = (PhysicalPosition<f64>, Force)>),
-        B: 'static + FnMut(ModifiersState, i32, PhysicalPosition<f64>, ButtonsState, MouseButton),
+            + FnMut(
+                ModifiersState,
+                i32,
+                &mut dyn Iterator<Item = (PhysicalPosition<f64>, Force, Instant)>,
+            ),
+        B: 'static
+            + FnMut(ModifiersState, i32, PhysicalPosition<f64>, ButtonsState, MouseButton, Instant),
     {
         self.pointer_handler.on_cursor_move(
             &self.common,
@@ -368,7 +378,7 @@ impl Canvas {
 
     pub fn on_touch_cancel<F>(&mut self, handler: F)
     where
-        F: 'static + FnMut(i32, PhysicalPosition<f64>, Force),
+        F: 'static + FnMut(i32, PhysicalPosition<f64>, Force, Instant),
     {
         self.pointer_handler.on_touch_cancel(&self.common, handler)
     }

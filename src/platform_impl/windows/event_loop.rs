@@ -25,6 +25,7 @@ use windows_sys::Win32::Graphics::Gdi::{
     ValidateRect, MONITORINFO, MONITOR_DEFAULTTONULL, RDW_INTERNALPAINT, SC_SCREENSAVE,
 };
 use windows_sys::Win32::System::Ole::RevokeDragDrop;
+use windows_sys::Win32::System::SystemInformation::GetTickCount;
 use windows_sys::Win32::System::Threading::{
     CreateWaitableTimerExW, GetCurrentThreadId, SetWaitableTimer,
     CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, INFINITE, TIMER_ALL_ACCESS,
@@ -44,7 +45,7 @@ use windows_sys::Win32::UI::Input::Touch::{
 use windows_sys::Win32::UI::Input::{RAWINPUT, RIM_TYPEKEYBOARD, RIM_TYPEMOUSE};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos,
-    GetMenu, LoadCursorW, MsgWaitForMultipleObjectsEx, PeekMessageW, PostMessageW,
+    GetMenu, GetMessageTime, LoadCursorW, MsgWaitForMultipleObjectsEx, PeekMessageW, PostMessageW,
     RegisterClassExW, RegisterWindowMessageA, SetCursor, SetWindowPos, TranslateMessage,
     CREATESTRUCTW, GIDC_ARRIVAL, GIDC_REMOVAL, GWL_STYLE, GWL_USERDATA, HTCAPTION, HTCLIENT,
     MINMAXINFO, MNC_CLOSE, MSG, MWMO_INPUTAVAILABLE, NCCALCSIZE_PARAMS, PM_REMOVE, PT_PEN,
@@ -998,6 +999,13 @@ fn normalize_pointer_pressure(pressure: u32) -> Option<Force> {
     }
 }
 
+/// When the input message being handled was posted. `GetMessageTime` reads the `GetTickCount` clock.
+fn message_time() -> Instant {
+    crate::utils::input_time_from_millis(unsafe { GetMessageTime() } as u32, unsafe {
+        GetTickCount()
+    })
+}
+
 /// Emit a `ModifiersChanged` event whenever modifiers have changed.
 /// Returns the current modifier state
 fn update_modifiers(window: HWND, userdata: &WindowData) {
@@ -1146,6 +1154,7 @@ unsafe fn public_window_callback_inner(
                     device_id: DEVICE_ID,
                     event: event.event,
                     is_synthetic: event.is_synthetic,
+                    time: if event.is_synthetic { Instant::now() } else { message_time() },
                 },
             });
         }
@@ -1789,7 +1798,12 @@ unsafe fn public_window_callback_inner(
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
-                event: MouseInput { device_id: DEVICE_ID, state: Pressed, button: Left },
+                event: MouseInput {
+                    device_id: DEVICE_ID,
+                    state: Pressed,
+                    button: Left,
+                    time: message_time(),
+                },
             });
             result = ProcResult::Value(0);
         },
@@ -1805,7 +1819,12 @@ unsafe fn public_window_callback_inner(
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
-                event: MouseInput { device_id: DEVICE_ID, state: Released, button: Left },
+                event: MouseInput {
+                    device_id: DEVICE_ID,
+                    state: Released,
+                    button: Left,
+                    time: message_time(),
+                },
             });
             result = ProcResult::Value(0);
         },
@@ -1821,7 +1840,12 @@ unsafe fn public_window_callback_inner(
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
-                event: MouseInput { device_id: DEVICE_ID, state: Pressed, button: Right },
+                event: MouseInput {
+                    device_id: DEVICE_ID,
+                    state: Pressed,
+                    button: Right,
+                    time: message_time(),
+                },
             });
             result = ProcResult::Value(0);
         },
@@ -1837,7 +1861,12 @@ unsafe fn public_window_callback_inner(
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
-                event: MouseInput { device_id: DEVICE_ID, state: Released, button: Right },
+                event: MouseInput {
+                    device_id: DEVICE_ID,
+                    state: Released,
+                    button: Right,
+                    time: message_time(),
+                },
             });
             result = ProcResult::Value(0);
         },
@@ -1853,7 +1882,12 @@ unsafe fn public_window_callback_inner(
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
-                event: MouseInput { device_id: DEVICE_ID, state: Pressed, button: Middle },
+                event: MouseInput {
+                    device_id: DEVICE_ID,
+                    state: Pressed,
+                    button: Middle,
+                    time: message_time(),
+                },
             });
             result = ProcResult::Value(0);
         },
@@ -1869,7 +1903,12 @@ unsafe fn public_window_callback_inner(
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
-                event: MouseInput { device_id: DEVICE_ID, state: Released, button: Middle },
+                event: MouseInput {
+                    device_id: DEVICE_ID,
+                    state: Released,
+                    button: Middle,
+                    time: message_time(),
+                },
             });
             result = ProcResult::Value(0);
         },
@@ -1894,6 +1933,7 @@ unsafe fn public_window_callback_inner(
                         2 => Forward,
                         _ => Other(xbutton),
                     },
+                    time: message_time(),
                 },
             });
             result = ProcResult::Value(0);
@@ -1919,6 +1959,7 @@ unsafe fn public_window_callback_inner(
                         2 => Forward,
                         _ => Other(xbutton),
                     },
+                    time: message_time(),
                 },
             });
             result = ProcResult::Value(0);
@@ -1973,6 +2014,7 @@ unsafe fn public_window_callback_inner(
                             location,
                             force: None, // WM_TOUCH doesn't support pressure information
                             id: input.dwID as u64,
+                            time: message_time(),
                             device_id: DEVICE_ID,
                         }),
                     });
@@ -2120,6 +2162,7 @@ unsafe fn public_window_callback_inner(
                             force,
                             id: pointer_info.pointerId as u64,
                             device_id: DEVICE_ID,
+                            time: message_time(),
                         }),
                     });
                 }

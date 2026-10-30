@@ -30,6 +30,7 @@ use sctk::seat::SeatState;
 use crate::dpi::{LogicalPosition, PhysicalPosition};
 use crate::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
 
+use crate::platform_impl::platform::input_time;
 use crate::platform_impl::wayland::state::WinitState;
 use crate::platform_impl::wayland::{self, DeviceId, WindowId};
 
@@ -153,8 +154,8 @@ impl PointerHandler for WinitState {
                         window_id,
                     );
                 },
-                ref kind @ PointerEventKind::Press { button, serial, .. }
-                | ref kind @ PointerEventKind::Release { button, serial, .. } => {
+                ref kind @ PointerEventKind::Press { button, serial, time }
+                | ref kind @ PointerEventKind::Release { button, serial, time } => {
                     // Update the last button serial.
                     pointer.winit_data().inner.lock().unwrap().latest_button_serial = serial;
 
@@ -165,7 +166,12 @@ impl PointerHandler for WinitState {
                         ElementState::Released
                     };
                     self.events_sink.push_window_event(
-                        WindowEvent::MouseInput { device_id, state, button },
+                        WindowEvent::MouseInput {
+                            device_id,
+                            state,
+                            button,
+                            time: input_time(time),
+                        },
                         window_id,
                     );
                 },

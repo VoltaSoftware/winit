@@ -1,5 +1,7 @@
 //! Touch handling.
 
+use std::time::Instant;
+
 use tracing::warn;
 
 use sctk::reexports::client::protocol::wl_seat::WlSeat;
@@ -12,6 +14,7 @@ use sctk::seat::touch::{TouchData, TouchHandler};
 use crate::dpi::LogicalPosition;
 use crate::event::{Touch, TouchPhase, WindowEvent};
 
+use crate::platform_impl::platform::input_time;
 use crate::platform_impl::wayland::state::WinitState;
 use crate::platform_impl::wayland::{self, DeviceId};
 
@@ -22,7 +25,7 @@ impl TouchHandler for WinitState {
         _: &QueueHandle<Self>,
         touch: &WlTouch,
         _: u32,
-        _: u32,
+        time: u32,
         surface: WlSurface,
         id: i32,
         position: (f64, f64),
@@ -54,6 +57,7 @@ impl TouchHandler for WinitState {
                 location: location.to_physical(scale_factor),
                 force: None,
                 id: id as u64,
+                time: input_time(time),
             }),
             window_id,
         );
@@ -65,7 +69,7 @@ impl TouchHandler for WinitState {
         _: &QueueHandle<Self>,
         touch: &WlTouch,
         _: u32,
-        _: u32,
+        time: u32,
         id: i32,
     ) {
         let seat_state = match self.seats.get_mut(&touch.seat().id()) {
@@ -97,6 +101,7 @@ impl TouchHandler for WinitState {
                 location: touch_point.location.to_physical(scale_factor),
                 force: None,
                 id: id as u64,
+                time: input_time(time),
             }),
             window_id,
         );
@@ -107,7 +112,7 @@ impl TouchHandler for WinitState {
         _: &Connection,
         _: &QueueHandle<Self>,
         touch: &WlTouch,
-        _: u32,
+        time: u32,
         id: i32,
         position: (f64, f64),
     ) {
@@ -142,6 +147,7 @@ impl TouchHandler for WinitState {
                 location: touch_point.location.to_physical(scale_factor),
                 force: None,
                 id: id as u64,
+                time: input_time(time),
             }),
             window_id,
         );
@@ -174,6 +180,8 @@ impl TouchHandler for WinitState {
                     location,
                     force: None,
                     id: id as u64,
+                    // wl_touch::cancel carries no time.
+                    time: Instant::now(),
                 }),
                 window_id,
             );

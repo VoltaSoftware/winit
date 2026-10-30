@@ -3,6 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use std::os::raw::{c_char, c_int, c_long, c_ulong};
 use std::slice;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use x11_dl::xinput2::{
     self, XIDeviceEvent, XIEnterEvent, XIFocusInEvent, XIFocusOutEvent, XIHierarchyEvent,
@@ -30,7 +31,7 @@ use crate::platform_impl::common::xkb::{self, XkbState};
 use crate::platform_impl::platform::common::xkb::Context;
 use crate::platform_impl::platform::x11::ime::{ImeEvent, ImeEventReceiver, ImeRequest};
 use crate::platform_impl::platform::x11::ActiveEventLoop;
-use crate::platform_impl::platform::ActiveEventLoop as PlatformActiveEventLoop;
+use crate::platform_impl::platform::{input_time, ActiveEventLoop as PlatformActiveEventLoop};
 use crate::platform_impl::x11::atoms::*;
 use crate::platform_impl::x11::util::cookie::GenericEventCookie;
 use crate::platform_impl::x11::{
@@ -976,7 +977,12 @@ impl EventProcessor {
                 let event = key_processor.process_key_event(keycode, state, repeat);
                 let event = Event::WindowEvent {
                     window_id,
-                    event: WindowEvent::KeyboardInput { device_id, event, is_synthetic: false },
+                    event: WindowEvent::KeyboardInput {
+                        device_id,
+                        event,
+                        is_synthetic: false,
+                        time: input_time(xev.time as u32),
+                    },
                 };
                 callback(&self.target, event);
             }
@@ -1064,16 +1070,17 @@ impl EventProcessor {
             return;
         }
 
+        let time = input_time(event.time as u32);
         let event = match event.detail as u32 {
             xlib::Button1 => {
-                WindowEvent::MouseInput { device_id, state, button: MouseButton::Left }
+                WindowEvent::MouseInput { device_id, state, button: MouseButton::Left, time }
             },
             xlib::Button2 => {
-                WindowEvent::MouseInput { device_id, state, button: MouseButton::Middle }
+                WindowEvent::MouseInput { device_id, state, button: MouseButton::Middle, time }
             },
 
             xlib::Button3 => {
-                WindowEvent::MouseInput { device_id, state, button: MouseButton::Right }
+                WindowEvent::MouseInput { device_id, state, button: MouseButton::Right, time }
             },
 
             // Suppress emulated scroll wheel clicks, since we handle the real motion events for
@@ -1091,10 +1098,15 @@ impl EventProcessor {
                 },
                 phase: TouchPhase::Moved,
             },
-            8 => WindowEvent::MouseInput { device_id, state, button: MouseButton::Back },
+            8 => WindowEvent::MouseInput { device_id, state, button: MouseButton::Back, time },
 
-            9 => WindowEvent::MouseInput { device_id, state, button: MouseButton::Forward },
-            x => WindowEvent::MouseInput { device_id, state, button: MouseButton::Other(x as u16) },
+            9 => WindowEvent::MouseInput { device_id, state, button: MouseButton::Forward, time },
+            x => WindowEvent::MouseInput {
+                device_id,
+                state,
+                button: MouseButton::Other(x as u16),
+                time,
+            },
         };
 
         let event = Event::WindowEvent { window_id, event };
@@ -1398,6 +1410,7 @@ impl EventProcessor {
                     location,
                     force: None, // TODO
                     id,
+                    time: input_time(xev.time as u32),
                 }),
             };
             callback(&self.target, event)
@@ -1816,7 +1829,12 @@ impl EventProcessor {
             let event = key_processor.process_key_event(keycode as u32, state, false);
             let event = Event::WindowEvent {
                 window_id,
-                event: WindowEvent::KeyboardInput { device_id, event, is_synthetic: true },
+                event: WindowEvent::KeyboardInput {
+                    device_id,
+                    event,
+                    is_synthetic: true,
+                    time: Instant::now(),
+                },
             };
             callback(target, event);
         }

@@ -1026,6 +1026,16 @@ fn min_timeout(a: Option<Duration>, b: Option<Duration>) -> Option<Duration> {
     a.map_or(b, |a_timeout| b.map_or(Some(a_timeout), |b_timeout| Some(a_timeout.min(b_timeout))))
 }
 
+/// When an input happened by its X11 or Wayland event time: milliseconds on a clock both protocols
+/// leave unspecified, which is `CLOCK_MONOTONIC` for Xorg, XWayland and the common compositors.
+pub(crate) fn input_time(event_ms: u32) -> std::time::Instant {
+    let mut now = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: `now` is a valid timespec to write into.
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut now) };
+    let now_ms = (now.tv_sec as u64 * 1_000 + now.tv_nsec as u64 / 1_000_000) as u32;
+    crate::utils::input_time_from_millis(event_ms, now_ms)
+}
+
 #[cfg(target_os = "linux")]
 fn is_main_thread() -> bool {
     rustix::thread::gettid() == rustix::process::getpid()

@@ -6,9 +6,21 @@ use smol_str::SmolStr;
 use std::cell::OnceCell;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{KeyboardEvent, MouseEvent, PointerEvent, WheelEvent};
+use web_sys::{Event, KeyboardEvent, MouseEvent, PointerEvent, WheelEvent};
+use web_time::Instant;
 
 use super::Engine;
+
+/// When the browser says the event happened. `timeStamp` reads the clock behind `performance.now()`.
+pub fn event_time(event: &Event) -> Instant {
+    let now_ms = web_sys::window()
+        .and_then(|window| window.performance())
+        .map(|performance| performance.now());
+    match now_ms {
+        Some(now_ms) => crate::utils::input_time((now_ms - event.time_stamp()) / 1000.0),
+        None => Instant::now(),
+    }
+}
 
 bitflags::bitflags! {
     // https://www.w3.org/TR/pointerevents3/#the-buttons-property
