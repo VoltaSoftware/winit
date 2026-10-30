@@ -1,12 +1,15 @@
 #![allow(clippy::unnecessary_cast)]
 use std::cell::{Cell, RefCell};
+use std::time::Instant;
 
 use objc2::rc::Retained;
 use objc2::runtime::{NSObjectProtocol, ProtocolObject};
 use objc2::{
     declare_class, extern_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass,
 };
-use objc2_foundation::{CGFloat, CGPoint, CGRect, MainThreadMarker, NSObject, NSSet, NSString};
+use objc2_foundation::{
+    CGFloat, CGPoint, CGRect, MainThreadMarker, NSObject, NSProcessInfo, NSSet, NSString,
+};
 use objc2_ui_kit::{
     UICoordinateSpace, UIEvent, UIForceTouchCapability, UIGestureRecognizer,
     UIGestureRecognizerDelegate, UIGestureRecognizerState, UIKeyInput, UIPanGestureRecognizer,
@@ -513,6 +516,8 @@ impl WinitView {
         let window = self.window().unwrap();
         let mut touch_events = Vec::new();
         let os_supports_force = app_state::os_capabilities().force_touch;
+        // Touch timestamps count seconds since boot, as `systemUptime` does.
+        let uptime = unsafe { NSProcessInfo::processInfo().systemUptime() };
         for touch in touches {
             let logical_location = touch.locationInView(None);
             let touch_type = touch.r#type();
@@ -568,6 +573,7 @@ impl WinitView {
                     location: physical_location,
                     force,
                     phase,
+                    time: crate::utils::input_time(uptime - touch.timestamp()),
                 }),
             }));
         }
@@ -579,6 +585,8 @@ impl WinitView {
         let window = self.window().unwrap();
         let window_id = RootWindowId(window.id());
         let mtm = MainThreadMarker::new().unwrap();
+        // Typed text carries no key times.
+        let time = Instant::now();
         // send individual events for each character
         app_state::handle_nonuser_events(
             mtm,
@@ -606,6 +614,7 @@ impl WinitView {
                             },
                             is_synthetic: false,
                             device_id: DEVICE_ID,
+                            time,
                         },
                     })
                 })
@@ -617,6 +626,7 @@ impl WinitView {
         let window = self.window().unwrap();
         let window_id = RootWindowId(window.id());
         let mtm = MainThreadMarker::new().unwrap();
+        let time = Instant::now();
         app_state::handle_nonuser_events(
             mtm,
             [ElementState::Pressed, ElementState::Released].map(|state| {
@@ -634,6 +644,7 @@ impl WinitView {
                             text: None,
                         },
                         is_synthetic: false,
+                        time,
                     },
                 })
             }),

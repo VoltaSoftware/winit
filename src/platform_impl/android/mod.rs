@@ -41,6 +41,16 @@ fn min_timeout(a: Option<Duration>, b: Option<Duration>) -> Option<Duration> {
     a.map_or(b, |a_timeout| b.map_or(Some(a_timeout), |b_timeout| Some(a_timeout.min(b_timeout))))
 }
 
+/// When an input happened, from its event time in nanoseconds on `java.lang.System.nanoTime()`'s
+/// clock, which is `CLOCK_MONOTONIC`.
+fn input_time(event_time_ns: i64) -> Instant {
+    let mut now = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: `now` is a valid timespec to write into.
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut now) };
+    let now_ns = now.tv_sec as i64 * 1_000_000_000 + now.tv_nsec as i64;
+    crate::utils::input_time((now_ns - event_time_ns) as f64 / 1e9)
+}
+
 struct PeekableReceiver<T> {
     recv: mpsc::Receiver<T>,
     first: Option<T>,
@@ -437,6 +447,7 @@ impl<T: 'static> EventLoop<T> {
                                 location,
                                 id: pointer.pointer_id() as u64,
                                 force: Some(Force::Normalized(pointer.pressure() as f64)),
+                                time: input_time(motion_event.event_time()),
                             }),
                         };
                         callback(event, self.window_target());
@@ -488,6 +499,7 @@ impl<T: 'static> EventLoop<T> {
                                     platform_specific: KeyEventExtra {},
                                 },
                                 is_synthetic: false,
+                                time: input_time(key.event_time()),
                             },
                         };
                         callback(event, self.window_target());

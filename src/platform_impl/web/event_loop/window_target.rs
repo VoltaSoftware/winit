@@ -133,7 +133,7 @@ impl ActiveEventLoop {
         let runner = self.runner.clone();
         let modifiers = self.modifiers.clone();
         canvas.on_keyboard_press(
-            move |physical_key, logical_key, text, location, repeat, active_modifiers| {
+            move |physical_key, logical_key, text, location, repeat, active_modifiers, time| {
                 let modifiers_changed = (modifiers.get() != active_modifiers).then(|| {
                     modifiers.set(active_modifiers);
                     Event::WindowEvent {
@@ -159,6 +159,7 @@ impl ActiveEventLoop {
                                 platform_specific: KeyEventExtra,
                             },
                             is_synthetic: false,
+                            time,
                         },
                     })
                     .chain(modifiers_changed),
@@ -169,7 +170,7 @@ impl ActiveEventLoop {
         let runner = self.runner.clone();
         let modifiers = self.modifiers.clone();
         canvas.on_keyboard_release(
-            move |physical_key, logical_key, text, location, repeat, active_modifiers| {
+            move |physical_key, logical_key, text, location, repeat, active_modifiers, time| {
                 let modifiers_changed = (modifiers.get() != active_modifiers).then(|| {
                     modifiers.set(active_modifiers);
                     Event::WindowEvent {
@@ -195,6 +196,7 @@ impl ActiveEventLoop {
                                 platform_specific: KeyEventExtra,
                             },
                             is_synthetic: false,
+                            time,
                         },
                     })
                     .chain(modifiers_changed),
@@ -299,7 +301,7 @@ impl ActiveEventLoop {
                         });
 
                     runner.send_events(modifiers.into_iter().chain(events.map(
-                        |(location, force)| Event::WindowEvent {
+                        |(location, force, time)| Event::WindowEvent {
                             window_id: RootWindowId(id),
                             event: WindowEvent::Touch(Touch {
                                 id: device_id as u64,
@@ -307,6 +309,7 @@ impl ActiveEventLoop {
                                 phase: TouchPhase::Moved,
                                 force: Some(force),
                                 location,
+                                time,
                             }),
                         },
                     )));
@@ -321,7 +324,8 @@ impl ActiveEventLoop {
                       pointer_id,
                       position: crate::dpi::PhysicalPosition<f64>,
                       buttons,
-                      button| {
+                      button,
+                      time| {
                     let modifiers =
                         (has_focus.get() && modifiers.get() != active_modifiers).then(|| {
                             modifiers.set(active_modifiers);
@@ -349,7 +353,7 @@ impl ActiveEventLoop {
                         },
                         Event::WindowEvent {
                             window_id: RootWindowId(id),
-                            event: WindowEvent::MouseInput { device_id, state, button },
+                            event: WindowEvent::MouseInput { device_id, state, button, time },
                         },
                     ]));
                 }
@@ -361,7 +365,7 @@ impl ActiveEventLoop {
                 let runner = self.runner.clone();
                 let modifiers = self.modifiers.clone();
 
-                move |active_modifiers, pointer_id, position, button| {
+                move |active_modifiers, pointer_id, position, button, time| {
                     let modifiers = (modifiers.get() != active_modifiers).then(|| {
                         modifiers.set(active_modifiers);
                         Event::WindowEvent {
@@ -386,6 +390,7 @@ impl ActiveEventLoop {
                                 device_id,
                                 state: ElementState::Pressed,
                                 button,
+                                time,
                             },
                         },
                     ]));
@@ -395,7 +400,7 @@ impl ActiveEventLoop {
                 let runner = self.runner.clone();
                 let modifiers = self.modifiers.clone();
 
-                move |active_modifiers, device_id, location, force| {
+                move |active_modifiers, device_id, location, force, time| {
                     let modifiers = (modifiers.get() != active_modifiers).then(|| {
                         modifiers.set(active_modifiers);
                         Event::WindowEvent {
@@ -413,6 +418,7 @@ impl ActiveEventLoop {
                                 phase: TouchPhase::Started,
                                 force: Some(force),
                                 location,
+                                time,
                             }),
                         },
                     )))
@@ -426,7 +432,7 @@ impl ActiveEventLoop {
                 let has_focus = has_focus.clone();
                 let modifiers = self.modifiers.clone();
 
-                move |active_modifiers, pointer_id, position, button| {
+                move |active_modifiers, pointer_id, position, button, time| {
                     let modifiers =
                         (has_focus.get() && modifiers.get() != active_modifiers).then(|| {
                             modifiers.set(active_modifiers);
@@ -452,6 +458,7 @@ impl ActiveEventLoop {
                                 device_id,
                                 state: ElementState::Released,
                                 button,
+                                time,
                             },
                         },
                     ]));
@@ -462,7 +469,7 @@ impl ActiveEventLoop {
                 let has_focus = has_focus.clone();
                 let modifiers = self.modifiers.clone();
 
-                move |active_modifiers, device_id, location, force| {
+                move |active_modifiers, device_id, location, force, time| {
                     let modifiers =
                         (has_focus.get() && modifiers.get() != active_modifiers).then(|| {
                             modifiers.set(active_modifiers);
@@ -481,6 +488,7 @@ impl ActiveEventLoop {
                                 phase: TouchPhase::Ended,
                                 force: Some(force),
                                 location,
+                                time,
                             }),
                         },
                     )));
@@ -513,7 +521,7 @@ impl ActiveEventLoop {
         });
 
         let runner = self.runner.clone();
-        canvas.on_touch_cancel(move |device_id, location, force| {
+        canvas.on_touch_cancel(move |device_id, location, force, time| {
             runner.send_event(Event::WindowEvent {
                 window_id: RootWindowId(id),
                 event: WindowEvent::Touch(Touch {
@@ -522,6 +530,7 @@ impl ActiveEventLoop {
                     phase: TouchPhase::Cancelled,
                     force: Some(force),
                     location,
+                    time,
                 }),
             });
         });

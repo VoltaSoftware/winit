@@ -237,6 +237,10 @@ pub enum WindowEvent {
         ///
         /// Otherwise, this value is always `false`.
         is_synthetic: bool,
+
+        /// When the key changed state, by the platform's own event time. Platforms without one,
+        /// and synthetic events, report when winit received the event.
+        time: Instant,
     },
 
     /// The keyboard modifiers have changed.
@@ -296,7 +300,14 @@ pub enum WindowEvent {
     MouseWheel { device_id: DeviceId, delta: MouseScrollDelta, phase: TouchPhase },
 
     /// An mouse button press has been received.
-    MouseInput { device_id: DeviceId, state: ElementState, button: MouseButton },
+    MouseInput {
+        device_id: DeviceId,
+        state: ElementState,
+        button: MouseButton,
+        /// When the button changed state, by the platform's own event time. Platforms without one
+        /// report when winit received the event.
+        time: Instant,
+    },
 
     /// Two-finger pinch gesture, often used for magnification.
     ///
@@ -875,6 +886,9 @@ pub struct Touch {
     pub force: Option<Force>,
     /// Unique identifier of a finger.
     pub id: u64,
+    /// When this happened, by the platform's own event time. Platforms without one report when
+    /// winit received the event.
+    pub time: Instant,
 }
 
 /// Describes the force of a touch event
@@ -1030,6 +1044,7 @@ impl PartialEq for InnerSizeWriter {
 
 #[cfg(test)]
 mod tests {
+    use super::Instant;
     use crate::dpi::PhysicalPosition;
     use crate::event;
     use std::collections::{BTreeSet, HashSet};
@@ -1081,6 +1096,7 @@ mod tests {
                     device_id: did,
                     state: event::ElementState::Pressed,
                     button: event::MouseButton::Other(0),
+                    time: Instant::now(),
                 });
                 with_window_event(PinchGesture {
                     device_id: did,
@@ -1106,6 +1122,7 @@ mod tests {
                     location: (0.0, 0.0).into(),
                     id: 0,
                     force: Some(event::Force::Normalized(0.0)),
+                    time: Instant::now(),
                 }));
                 with_window_event(ThemeChanged(crate::window::Theme::Light));
                 with_window_event(Occluded(true));
@@ -1195,6 +1212,7 @@ mod tests {
             location: (0.0, 0.0).into(),
             id: 0,
             force: Some(event::Force::Normalized(0.0)),
+            time: Instant::now(),
         }
         .clone();
         let _ =
